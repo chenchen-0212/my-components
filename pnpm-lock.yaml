@@ -12,6 +12,22 @@ importers:
         specifier: ^2.11.10
         version: 2.11.10
 
+  apps/docs:
+    dependencies:
+      '@mc-ui/core':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      vue:
+        specifier: ^3.5.43
+        version: 3.5.44(typescript@5.4.2)
+    devDependencies:
+      '@vitejs/plugin-vue':
+        specifier: ^5.0.0
+        version: 5.2.4(vite@5.4.21(@types/node@26.6.5))(vue@3.5.44(typescript@5.4.2))
+      vite:
+        specifier: ^5.0.0
+        version: 5.4.21(@types/node@26.6.5)
+
   apps/playground:
     dependencies:
       '@mc-ui/core':
