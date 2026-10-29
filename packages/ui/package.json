@@ -13,11 +13,13 @@
     "build": "vite build"
   },
   "peerDependencies": {
-    "vue": "^3.0.0"
+    "vue": "^3.0.0",
+    "element-plus": "^2.14.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@vitejs/plugin-vue": "^5.0.0",
+    "element-plus": "^2.14.7",
     "vite": "^5.0.0",
     "vite-plugin-dts": "^3.0.0",
     "vue-tsc": "^2.0.0"

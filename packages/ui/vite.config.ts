@@ -12,6 +12,6 @@ export default defineConfig({
       fileName: 'mc-ui',
       formats: ['es'],
     },
-    rollupOptions: { external: ['vue'] },
+    rollupOptions: { external: ['vue', /^element-plus(\/.*)?$/] },
   },
 })
