@@ -1,0 +1,9 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+allowBuilds:
+  esbuild: set this to true or false
+
+# 需要时才加：
+# onlyBuiltDependencies:
+#   - esbuild
