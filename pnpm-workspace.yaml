@@ -4,4 +4,5 @@ packages:
 
 # bullmq 依赖 msgpackr 的原生加速器，不编译也能用（自动回退 JS 实现）
 allowBuilds:
+  esbuild: set this to true or false
   msgpackr-extract: false

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@mc-ui/core": "workspace:*",
+    "@mc-ui/utils": "workspace:*",
     "element-plus": "^2.14.7",
     "vue": "^3.5.43",
     "vue-i18n": "^11.4.16",

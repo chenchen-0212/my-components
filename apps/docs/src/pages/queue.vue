@@ -2,7 +2,7 @@
   <div>
     <el-input v-model="input"></el-input>
     <el-button type="primary" :loading="status==1" @click="add">添加任务</el-button>
-    <el-tag>{{StatusMap[status]}}</el-tag>
+    <el-tag>{{getQueueStatusText(status)}}</el-tag>
     <el-tag v-if="result">{{result}}</el-tag>
   </div>
 </template>
@@ -12,20 +12,17 @@ definePage({
   meta: { title: '队列', order: 9 },
 })
 
-const StatusMap = {
-  0: '等待中',
-  1: '处理中',
-  2: '完成',
-}
-
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { queueStatusMap, getQueueStatusText } from '@mc-ui/utils'
 
 const input = ref<string>('')
 const result = ref<string>('')
 const jobId = ref<number>()
 
-const status = ref<0 | 1 | 2>(0)
+const status = ref<number>(0)
+
+const StatusMap = queueStatusMap
 
 const add = () => {
   console.log(input.value)
@@ -46,7 +43,7 @@ const add = () => {
         return
       }
       jobId.value = data.id
-      status.value = 0 
+      status.value = StatusMap.active.code
     })
   input.value = ''
 }
@@ -63,7 +60,11 @@ const pollFetch = (id: number) => {
         console.log(data)
         if (data.state == 'completed') {
           clearInterval(timer)
-          status.value = 2
+          status.value = StatusMap.completed.code
+          result.value = data?.result?.echo
+        }else if(data.state == 'failed'){
+          clearInterval(timer)
+          status.value = StatusMap.failed.code
           result.value = data?.result?.echo
         }
       })
@@ -72,7 +73,7 @@ const pollFetch = (id: number) => {
 
 watch(jobId,(newval) => {
   console.log(newval)
-  status.value = 1
+  status.value = StatusMap.active.code
   if (newval) {
     pollFetch(newval)
   }
