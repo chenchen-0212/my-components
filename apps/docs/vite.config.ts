@@ -1,15 +1,17 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import VueRouter from 'vue-router/vite'
-
+import Components from 'unplugin-vue-components/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
 export default defineConfig({
   plugins: [
-    VueRouter({
-      dts: 'typed-router.d.ts', // 生成类型声明文件
-      // routesFolder: 'src/pages',
+    VueRouter({dts: 'typed-router.d.ts'}),
+    vue(),
+    Components({
+      resolvers: [ElementPlusResolver({ importStyle: 'css' })],
+      dts: 'components.d.ts',
     }),
-    vue()
   ],
   server: {
     proxy: {

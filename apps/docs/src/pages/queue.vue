@@ -1,9 +1,9 @@
 <template>
   <div>
-    <input v-model="input"></input>
-    <button @click="add">添加任务</button>
-    <div>{{StatusMap[status]}}</div>
-    <div>{{result}}</div>
+    <el-input v-model="input"></el-input>
+    <el-button type="primary" :loading="status==1" @click="add">添加任务</el-button>
+    <el-tag>{{StatusMap[status]}}</el-tag>
+    <el-tag v-if="result">{{result}}</el-tag>
   </div>
 </template>
 

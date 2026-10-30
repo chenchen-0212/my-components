@@ -76,6 +76,9 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^5.0.0
         version: 5.2.4(vite@5.4.21(@types/node@26.6.5))(vue@3.5.44(typescript@7.0.2))
+      unplugin-vue-components:
+        specifier: ^32.1.0
+        version: 32.1.0(esbuild@0.21.5)(rollup@4.65.1)(vite@5.4.21(@types/node@26.6.5))(vue@3.5.44(typescript@7.0.2))
       vite:
         specifier: ^5.0.0
         version: 5.4.21(@types/node@26.6.5)
@@ -1823,6 +1826,10 @@ packages:
     resolution: {integrity: sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==}
     engines: {node: '>= 0.4'}
 
+  obug@2.2.1:
+    resolution: {integrity: sha512-XrsrhT5sybtKI6wakr2SPOlGZWWYbUXZ7a0jT8/QOeAPau+1X/bSegNe5YR75oJmEZQbKningirmGOEJCIk61Q==}
+    engines: {node: '>=12.20.0'}
+
   on-finished@2.4.2:
     resolution: {integrity: sha512-ATWUv387i+nLD49EiDoOft5scf32Vsdz3ktrQJG9bi7jRFmaXTssvyvj1EmeKVVgvesbqUtvQQvaS2TpTukAZQ==}
     engines: {node: '>= 0.8'}
@@ -2136,6 +2143,16 @@ packages:
   unplugin-utils@0.3.2:
     resolution: {integrity: sha512-xVToRh2CTmLk2HnEG7ac4rl1MJTT3RFkpS8B++/SnB0kXvuaavD+n3m/vrzyWQOdJNSZQACnbz01pnppbwV5BA==}
     engines: {node: '>=20.19.0'}
+
+  unplugin-vue-components@32.1.0:
+    resolution: {integrity: sha512-YiUkSxuRjab18XFOrX5VsIxXzccrfmHVGsGeJgSgklb829DQmCy9E4vvDUE4tuvZZdxyFJZX0Oc4TPnnxiiMyg==}
+    engines: {node: '>=20.19.0'}
+    peerDependencies:
+      '@nuxt/kit': ^3.2.2 || ^4.0.0
+      vue: ^3.0.0
+    peerDependenciesMeta:
+      '@nuxt/kit':
+        optional: true
 
   unplugin@3.7.0:
     resolution: {integrity: sha512-GrM2uq3DQo3hvLU2FjeYhooJ8BY9N6j1Fbzgx7Pta3VVJevsD3VP4dPjZkZOS0mLvN8w9zzr9OlP+31bSMyuLw==}
@@ -3826,6 +3843,8 @@ snapshots:
 
   object-inspect@1.13.4: {}
 
+  obug@2.2.1: {}
+
   on-finished@2.4.2:
     dependencies:
       ee-first: 1.1.1
@@ -4189,6 +4208,30 @@ snapshots:
     dependencies:
       pathe: 2.0.3
       picomatch: 4.0.7
+
+  unplugin-vue-components@32.1.0(esbuild@0.21.5)(rollup@4.65.1)(vite@5.4.21(@types/node@26.6.5))(vue@3.5.44(typescript@7.0.2)):
+    dependencies:
+      chokidar: 5.0.0
+      local-pkg: 1.2.1
+      magic-string: 0.30.21
+      mlly: 1.8.2
+      obug: 2.2.1
+      picomatch: 4.0.7
+      tinyglobby: 0.2.17
+      unplugin: 3.7.0(esbuild@0.21.5)(rollup@4.65.1)(vite@5.4.21(@types/node@26.6.5))
+      unplugin-utils: 0.3.2
+      vue: 3.5.44(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@farmfe/core'
+      - '@rsbuild/core'
+      - '@rspack/core'
+      - bun-types-no-globals
+      - esbuild
+      - rolldown
+      - rollup
+      - unloader
+      - vite
+      - webpack
 
   unplugin@3.7.0(esbuild@0.21.5)(rollup@4.65.1)(vite@5.4.21(@types/node@26.6.5)):
     dependencies:
