@@ -45,6 +45,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/queue': RouteRecordInfo<
+      '/queue',
+      '/queue',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
   }
 
   /**
@@ -69,6 +76,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/copy.vue': {
       routes:
         | '/copy'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/queue.vue': {
+      routes:
+        | '/queue'
       views:
         | never
       pathParamNames:
