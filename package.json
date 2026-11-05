@@ -4,8 +4,8 @@
   "description": "",
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev",
-    "docs:dev": "turbo docs:dev"
+    "dev": "turbo dev --filter=@mc-ui/docs --filter=@mc-ui/backend",
+    "docs:dev": "turbo dev --filter=@mc-ui/docs"
   },
   "keywords": [],
   "author": "",
