@@ -23,10 +23,12 @@ my-components/
 │   │   ├── src/route/         路由实例
 │   │   ├── src/locales/       i18n 词条（zh-CN / en-US）
 │   │   └── src/App.vue        固定顶栏 + el-menu 侧栏 + RouterView
-│   └── backend/               @mc-ui/backend     NestJS 服务 + BullMQ 队列
-│       ├── src/main.ts        入口（监听 PORT，默认 3000）
+│   └── backend/               @mc-ui/backend     NestJS 服务（队列 + LLM 流式接口）
+│       ├── src/main.ts        入口（加载 .env，监听 PORT，默认 3000）
 │       ├── src/app.module.ts  根模块
-│       └── src/queue/         队列模块 / 消费者 / 示例接口
+│       ├── src/queue/         队列模块 / 消费者 / 示例接口
+│       ├── src/llm/           DeepSeek 流式对话（SSE）
+│       └── .env               本地环境变量（已 gitignore）
 ├── pnpm-workspace.yaml        声明 packages/* 与 apps/* 为工作区成员
 ├── turbo.json                 任务调度（build / dev）
 └── package.json
@@ -57,13 +59,21 @@ pnpm -F @mc-ui/backend dev       # 后端服务    http://localhost:3000（需�
 
 两个前端应用的默认端口都是 5173，同时启动时后者会自动顺延到 5174。
 
+后端首次启动前，在 `apps/backend/.env` 里填好 DeepSeek 的 key（该文件已在 `.gitignore` 中）：
+
+```bash
+DEEPSEEK_API_KEY=sk-xxxxxxxx
+```
+
+缺少这个变量时，`/llm` 接口会在调用模型时报鉴权错误。
+
 ## 常用命令
 
 | 命令 | 作用 |
 | --- | --- |
 | `pnpm install` | 安装全部子项目依赖 |
 | `pnpm build` | 按依赖顺序构建所有包（turbo 负责排序） |
-| `pnpm dev` | 并行启动所有 dev 任务（含后端，需 Redis 就绪） |
+| `pnpm dev` | 并行启动文档站 + 后端（不含 playground，需 Redis 就绪） |
 | `pnpm -F @mc-ui/core build` | 只构建组件库 |
 | `pnpm -F @mc-ui/core dev` | 组件库监听模式（改源码自动重建 dist） |
 | `pnpm -F @mc-ui/playground dev` | 只启动调试页 |
@@ -115,15 +125,19 @@ definePage({
 - `meta.title`：菜单文案兜底值
 - `meta.order`：菜单排序，越小越靠前（未设置为 999）
 
-### Element Plus 按需注册
+### Element Plus 按需引入
 
-为避免把整个 Element Plus 打进产物，`src/main.ts` 里**逐个注册**组件：
+`vite.config.ts` 里用 `unplugin-vue-components` + `ElementPlusResolver` 在编译期扫描模板：模板里写 `<el-input>` 就会自动 import 并注册，**不用再回 `main.ts` 手动 `app.component(...)`**。
+
+样式方面 `main.ts` 全量引入了 `element-plus/dist/index.css`（gzip 后约 48KB），所以新增组件不需要补样式 import。
+
+需要手动调用的 API（`ElMessage`、`ElMessageBox` 等）仍需显式 import：
 
 ```ts
-app.component('ElMenu', ElMenu)
+import { ElMessage } from 'element-plus'
 ```
 
-新页面用到新的 EP 组件时，**必须回 `main.ts` 补一行注册**，否则模板不渲染，控制台只有一条 `Failed to resolve component` 警告。
+`components.d.ts`、`typed-router.d.ts` 是插件生成的类型文件，写页面时自动更新，建议一并提交。
 
 ### 国际化
 
@@ -142,7 +156,7 @@ app.component('ElMenu', ElMenu)
 
 ## 后端服务（apps/backend）
 
-NestJS 12（ESM）+ BullMQ 6，无鉴权，定位是给前端提供接口和异步任务。
+NestJS 12（ESM）+ BullMQ 6，无鉴权，定位是给前端提供接口、异步任务和 LLM 流式对话。
 
 ### 启动
 
@@ -164,8 +178,9 @@ node dist/main.js              # 跑编译产物
 | `REDIS_PORT` | `6379` | |
 | `REDIS_PASSWORD` | 空 | |
 | `REDIS_DB` | `0` | |
+| `DEEPSEEK_API_KEY` | 无 | `/llm` 接口调用 DeepSeek 用，缺失时报鉴权错误 |
 
-没有接 dotenv，直接读 `process.env`，因此需要在启动进程的环境里设置。
+用 `dotenv` 从 `apps/backend/.env` 读取（`main.ts` 第一行 `import 'dotenv/config'`）。注意这行**必须放在所有 import 之前**：`llm.controller.ts` 在模块顶层就 `new OpenAI(...)` 了，晚于它加载会拿到 undefined 的 key。
 
 ### 接口
 
@@ -173,6 +188,18 @@ node dist/main.js              # 跑编译产物
 | --- | --- | --- |
 | `POST` | `/jobs` | body `{ "message": "..." }`，返回 `{ "id": "1" }` |
 | `GET` | `/jobs/:id` | 返回 `{ state, result, failedReason }`，`state` 为 `waiting` / `active` / `completed` / `failed` |
+| `GET` | `/llm?msg=...` | SSE 流式对话，逐段推 `data: <文本>`，结尾推 `data: [DONE]` |
+
+### LLM 流式接口（SSE）
+
+`@Sse()` 返回 `Observable<{ data: string }>`，`next` 一次就往响应里写一段 `data: xxx\n\n`：
+
+- **只认 `data` 字段**：Nest 的 `SseStream` 只序列化 `data`（以及 `type` / `id` / `retry` / `comment`），写 `{ msg }` 会被直接丢掉，浏览器端 `onmessage` 不会触发。
+- 模型返回的是增量 `delta.content`，用 `for await` 逐块取，一块一个 `next`，这就是逐字输出的来源。
+- 正常结束先推 `data: [DONE]` 再 `complete()`。前端收到 `[DONE]` 要主动 `close()`，因为 `EventSource` 在服务端断开后会**自动重连**，不关会无限循环调用模型。
+- 前端侧：`new EventSource('/api/llm?msg=' + encodeURIComponent(text))`，收到的 `e.data` 是字符串，直接拼接即可。
+
+对应的示例页面是文档站的 `src/pages/llm.vue`。
 
 ### 加一个队列
 
@@ -199,6 +226,7 @@ node dist/main.js              # 跑编译产物
 | 任务调度 | Turborepo |
 | 后端 | NestJS 12（ESM）+ Express |
 | 队列 | BullMQ 6 + ioredis |
+| 大模型 | openai SDK（指向 DeepSeek，`deepseek-flash`）+ SSE 流式输出 |
 
 ## 组件使用
 
