@@ -11,6 +11,8 @@
 <script setup lang="ts">
 import { ElButton, ElInput } from 'element-plus';
 import { ref, onUnmounted } from 'vue';
+import llmApi from '../api/modules/llm.api';
+
 
 definePage({
   meta: {
@@ -63,40 +65,51 @@ const sendStreamMsg = () => {
 // 连续对话流
 async function chatMextMsg() {
   loading.value = true
-  const response = await fetch('/api/llm', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ history: history, message: msg.value })
-  });
+  // const response = await fetch('/api/llm', {
+  //   method: 'POST',
+  //   headers: { 'Content-Type': 'application/json' },
+  //   body: JSON.stringify({ history: history, message: msg.value })
+  // });
 
-  const reader = response.body?.getReader()
-  const decoder = new TextDecoder();
-  // let aiReply = '';
-  pre.value += '\n'
+  const data = { history: history, message: msg.value }
 
-  while (true) {
-    const { done, value } = await reader?.read() || {};
-    if (done) break;
+  try {
+    const response = await llmApi.send_llm_msg(data)
 
-    const chunk = decoder.decode(value)
-    const lines = chunk.split('\n');
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = JSON.parse(line.slice(6));
-        if (data.c) {
-          pre.value += data.c;
-          // 渲染到页面（打字机效果）
-        }
-        console.log(data?.done)
-        if (data?.done) {
-          // 一次对话结束，把用户的问题和 AI 的回答存入历史
-          history.push({ role: 'user', content: msg.value });
-          history.push({ role: 'assistant', content: data?.fullMsg });
+    // console.log(response)
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder();
+    // let aiReply = '';
+    pre.value += '\n'
+
+    while (true) {
+      const { done, value } = await reader?.read() || {};
+      if (done) break;
+
+      const chunk = decoder.decode(value)
+      const lines = chunk.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.slice(6));
+          if (data.c) {
+            pre.value += data.c;
+            // 渲染到页面（打字机效果）
+          }
+          // console.log(data?.done)
+          if (data?.done) {
+            // 一次对话结束，把用户的问题和 AI 的回答存入历史
+            history.push({ role: 'user', content: msg.value });
+            history.push({ role: 'assistant', content: data?.fullMsg });
+          }
         }
       }
     }
+  } catch (e) {
+    console.error('生成对话失败',e)
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 
 onUnmounted(() => es?.close())

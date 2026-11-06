@@ -15,6 +15,7 @@ definePage({
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { queueStatusMap, getQueueStatusText } from '@mc-ui/utils'
+import queueApi from '../api/modules/queue.api'
 
 const input = ref<string>('')
 const result = ref<string>('')
@@ -27,35 +28,20 @@ const StatusMap = queueStatusMap
 const add = () => {
   console.log(input.value)
   result.value = ''
-  fetch('/api/jobs', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      message: input.value,
-    }),
-  }).then(res => res.json())
-    .then(data => {
-      console.log(data)
-      if(data?.statusCode==400){
-        ElMessage(data?.message)
-        return
-      }
-      jobId.value = data.id
-      status.value = StatusMap.active.code
-    })
+
+  queueApi.send_demo_msg({
+    message: input.value,
+  }).then(data => {
+    console.log(data)
+    jobId.value = data?.id
+    status.value = StatusMap.active.code
+  })
   input.value = ''
 }
 
 const pollFetch = (id: number) => {
   const timer = setInterval(() => {
-    fetch(`/api/jobs/${id}`,
-      {
-        method: 'GET',
-      }
-    )
-      .then(res => res.json())
+    queueApi.poll_queue(id)
       .then(data => {
         console.log(data)
         if (data.state == 'completed') {
