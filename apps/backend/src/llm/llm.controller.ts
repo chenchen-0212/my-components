@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Query, Sse, Post, Res, Logger } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Query, Sse, Get, Post, Res, Logger } from '@nestjs/common';
 import { LlmService } from './llm.service.js';
 import OpenAI from 'openai';
 import { Observable } from 'rxjs';
@@ -132,4 +132,11 @@ export class LlmController {
   async ragTest(@Body() body: any) {
    return await this.llmService.ask(body?.msg)
   }
+
+  @Get('lance-test')
+  testLanceDb() {
+    // return this.llmService.testLanceDb();
+    return '测试 lance'
+  }
+
 }

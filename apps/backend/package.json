@@ -9,11 +9,13 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
+    "@lancedb/lancedb": "^0.41.0",
     "@nestjs/bullmq": "^12.0.0",
     "@nestjs/common": "^12.3.2",
     "@nestjs/core": "^12.3.2",
     "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^12.3.2",
+    "apache-arrow": "^21.2.0",
     "bullmq": "^6.5.1",
     "dotenv": "^18.0.9",
     "ioredis": "^6.0.0",

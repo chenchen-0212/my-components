@@ -6,3 +6,6 @@ packages:
 allowBuilds:
   esbuild: set this to true or false
   msgpackr-extract: false
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true
