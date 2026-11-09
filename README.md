@@ -27,7 +27,8 @@ my-components/
 │       ├── src/main.ts        入口（加载 .env，监听 PORT，默认 3000）
 │       ├── src/app.module.ts  根模块
 │       ├── src/queue/         队列模块 / 消费者 / 示例接口
-│       ├── src/llm/           DeepSeek 流式对话（SSE）
+│       ├── src/llm/           DeepSeek 流式对话（SSE）+ RAG 检索
+│       ├── data/rag.txt       RAG 知识库（按空行分段）
 │       └── .env               本地环境变量（已 gitignore）
 ├── pnpm-workspace.yaml        声明 packages/* 与 apps/* 为工作区成员
 ├── turbo.json                 任务调度（build / dev）
@@ -59,13 +60,14 @@ pnpm -F @mc-ui/backend dev       # 后端服务    http://localhost:3000（需�
 
 两个前端应用的默认端口都是 5173，同时启动时后者会自动顺延到 5174。
 
-后端首次启动前，在 `apps/backend/.env` 里填好 DeepSeek 的 key（该文件已在 `.gitignore` 中）：
+后端首次启动前，在 `apps/backend/.env` 里填好两个 key（该文件已在 `.gitignore` 中）：
 
 ```bash
-DEEPSEEK_API_KEY=sk-xxxxxxxx
+DEEPSEEK_API_KEY=sk-xxxxxxxx   # 对话（DeepSeek）
+EMB_API_KEY=sk-xxxxxxxx        # 向量化（硅基流动）
 ```
 
-缺少这个变量时，`/llm` 接口会在调用模型时报鉴权错误。
+缺少 `DEEPSEEK_API_KEY` 时 `/llm` 系列接口报鉴权错误；缺少 `EMB_API_KEY` 时 `/llm/rag` 在向量化阶段失败。
 
 ## 常用命令
 
@@ -156,7 +158,7 @@ import { ElMessage } from 'element-plus'
 
 ## 后端服务（apps/backend）
 
-NestJS 12（ESM）+ BullMQ 6，无鉴权，定位是给前端提供接口、异步任务和 LLM 流式对话。
+NestJS 12（ESM）+ BullMQ 6，无鉴权，定位是给前端提供接口、异步任务、LLM 流式对话和 RAG 检索。
 
 ### 启动
 
@@ -178,7 +180,8 @@ node dist/main.js              # 跑编译产物
 | `REDIS_PORT` | `6379` | |
 | `REDIS_PASSWORD` | 空 | |
 | `REDIS_DB` | `0` | |
-| `DEEPSEEK_API_KEY` | 无 | `/llm` 接口调用 DeepSeek 用，缺失时报鉴权错误 |
+| `DEEPSEEK_API_KEY` | 无 | 对话模型（DeepSeek），缺失时报鉴权错误 |
+| `EMB_API_KEY` | 无 | 向量模型（硅基流动 SiliconFlow），`/llm/rag` 用 |
 
 用 `dotenv` 从 `apps/backend/.env` 读取（`main.ts` 第一行 `import 'dotenv/config'`）。注意这行**必须放在所有 import 之前**：`llm.controller.ts` 在模块顶层就 `new OpenAI(...)` 了，晚于它加载会拿到 undefined 的 key。
 
@@ -189,6 +192,8 @@ node dist/main.js              # 跑编译产物
 | `POST` | `/jobs` | body `{ "message": "..." }`，返回 `{ "id": "1" }` |
 | `GET` | `/jobs/:id` | 返回 `{ state, result, failedReason }`，`state` 为 `waiting` / `active` / `completed` / `failed` |
 | `GET` | `/llm?msg=...` | SSE 流式对话，逐段推 `data: <文本>`，结尾推 `data: [DONE]` |
+| `POST` | `/llm` | SSE 流式对话（原生 `res.write`），body `{ message, history }`，先检索内置知识库；事件为 `data: {"c":"..."}`，结束推 `data: {"done":true,"fullMsg":"..."}` |
+| `POST` | `/llm/rag` | 普通 JSON，body `{ msg }`，返回 `{ answer, sources }`；走 `data/rag.txt` + 真实向量检索 |
 
 ### LLM 流式接口（SSE）
 
@@ -200,6 +205,22 @@ node dist/main.js              # 跑编译产物
 - 前端侧：`new EventSource('/api/llm?msg=' + encodeURIComponent(text))`，收到的 `e.data` 是字符串，直接拼接即可。
 
 对应的示例页面是文档站的 `src/pages/llm.vue`。
+
+### RAG 检索（`POST /llm/rag`）
+
+`llmService.ask(question)` 的流程：
+
+1. 读 `apps/backend/data/rag.txt`，按**空行**切段（`split(/\r?\n\s*\r?\n/)`）——换知识库只改这个文件，不动代码；
+2. 把问题和所有段落放进**一次** `embeddings.create` 批量向量化（`Qwen/Qwen3-Embedding-4B`，2560 维，返回顺序与入参一致）；
+3. 用完整向量算余弦相似度，排序取 Top-2；
+4. Top-2 拼进 prompt 交给 DeepSeek，返回值里 `sources` 是命中的段落。
+
+注意几点：
+
+- **必须用完整向量**。`vector.slice(0, 5)` 这种截断再算余弦是没有意义的：5 维上的夹角估计噪声约 ±0.45，语义差异（通常 0.1~0.2）会被完全淹没，排序等于随机。调试想打印前几个数可以，别拿它参与计算。
+- 批量向量化单次条数有上限（约 32 条），段落多了要自己切片分批。
+- 现在没有相似度阈值，不管相不相关都会塞 Top-2 给模型；需要"答不上来"时用 `score` 卡一个下限。
+- `src/llm/RAG.test.ts` 里的 `fakeEmbedding` 是**字符取模的假向量**（100 维、不调外部接口），只服务于 `POST /llm` 那条演示链路；`POST /llm/rag` 用的是真实向量。两条接口的检索质量差异就来自这里。
 
 ### 加一个队列
 
@@ -227,6 +248,7 @@ node dist/main.js              # 跑编译产物
 | 后端 | NestJS 12（ESM）+ Express |
 | 队列 | BullMQ 6 + ioredis |
 | 大模型 | openai SDK（指向 DeepSeek，`deepseek-flash`）+ SSE 流式输出 |
+| 向量检索 | openai SDK 指向硅基流动，`Qwen/Qwen3-Embedding-4B` + 余弦相似度 |
 
 ## 组件使用
 
