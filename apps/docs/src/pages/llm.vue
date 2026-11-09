@@ -3,7 +3,8 @@
     <ElInput
       v-model="msg"
     />
-      <ElButton v-loading="loading"   @click="chatMextMsg">发送</ElButton>
+      <!-- <ElButton v-loading="loading"   @click="chatMextMsg">发送</ElButton> -->
+      <ElButton v-loading="loading"   @click="sendMsg">发送</ElButton>
     <pre class="msg_pennel">{{ pre }}</pre>
   </div>
 </template>
@@ -31,20 +32,12 @@ const loading = ref<boolean>(false)
 const history:any[] = []
 
 // 单条信息
-const sendMsg = () => {
-  fetch(url, {
-    method: method+'?message=${encodeURIComponent(message)}',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      msg: msg.value,
-    }),
-  }).then(res => res.json())
-    .then(data => {
-      console.log(data)
-      pre.value = data
-    })
+const sendMsg = async () => {
+  const resp = await llmApi.rag_send_msg({
+    msg: msg.value
+  })
+
+  pre.value = resp
 }
 
 // 流信息
@@ -63,7 +56,7 @@ const sendStreamMsg = () => {
 }
 
 // 连续对话流
-async function chatMextMsg() {
+async function chatNextMsg() {
   loading.value = true
   // const response = await fetch('/api/llm', {
   //   method: 'POST',
