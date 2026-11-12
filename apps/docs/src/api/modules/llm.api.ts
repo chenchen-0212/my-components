@@ -6,9 +6,9 @@ export default {
     return http.post('/llm',data,options, true)
   },
 
-  // rag测试接口
-  rag_send_msg(data:any) {
-    return http.post('/llm/rag',data)
+  // rag测试接口（SSE 流式，返回原始 Response）
+  rag_send_msg(data:any, options?: RequestOptions) {
+    return http.post('/llm/rag',data,options,true)
   },
 
   // 重建向量索引

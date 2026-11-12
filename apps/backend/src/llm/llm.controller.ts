@@ -129,8 +129,25 @@ export class LlmController {
   }
 
   @Post('/rag')
-  async ragTest(@Body() body: any) {
-   return await this.llmService.ask(body?.msg)
+  async ragTest(@Body() body: any, @Res() res: Response) {
+    const question = body?.msg
+    if (typeof question !== 'string' || !question.trim()) {
+      throw new BadRequestException('msg 不能为空')
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+
+    try {
+      const { sources } = await this.llmService.askStream(question, (text) => {
+        res.write(`data: ${JSON.stringify({ c: text })}\n\n`)
+      })
+      res.write(`data: ${JSON.stringify({ done: true, sources })}\n\n`)
+    } catch (e) {
+      res.write(`data: ${JSON.stringify({ error: (e as Error).message })}\n\n`)
+    }
+    res.end()
   }
 
   @Get('build-index')

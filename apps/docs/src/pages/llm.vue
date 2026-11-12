@@ -44,13 +44,33 @@ const resetIndex = async () => {
   }
 }
 
-// 单条信息
+// 单条信息（RAG 流式）
 const sendMsg = async () => {
-  const resp = await llmApi.rag_send_msg({
-    msg: msg.value
-  })
+  pre.value = ''
+  loading.value = true
+  try {
+    const resp = await llmApi.rag_send_msg({ msg: msg.value })
+    const reader = resp.body?.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
 
-  pre.value = resp
+    while (true) {
+      const { done, value } = await reader?.read() || {}
+      if (done) break
+      buf += decoder.decode(value)
+      // SSE 以空行分隔事件，只有收完整的一段才能 JSON.parse
+      const events = buf.split('\n\n')
+      buf = events.pop() ?? ''
+      for (const evt of events) {
+        if (!evt.startsWith('data: ')) continue
+        const data = JSON.parse(evt.slice(6))
+        if (data.c) pre.value += data.c
+        if (data.error) pre.value += `\n[错误] ${data.error}`
+      }
+    }
+  } finally {
+    loading.value = false
+  }
 }
 
 // 流信息

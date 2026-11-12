@@ -14,6 +14,8 @@ export class LlmService {
   // 两个上游分开计数：向量服务挂了不该连累对话，反之亦然
   private readonly embBreakers: CircuitBreaker[];
   private readonly llmBreaker = new CircuitBreaker('对话模型');
+  // 表只有 buildIndex 会换，缓存住省掉每次请求的 openTable
+  private tablePromise?: Promise<Awaited<ReturnType<Connection['openTable']>> | null>;
 
   constructor(
     @Inject('LANCE_DB_CONNECTION')
@@ -109,60 +111,60 @@ export class LlmService {
     return results
   }
 
-  async ask(question: string) {
+  /** 问题向量化 + 向量检索，返回按阈值过滤后的原文段落；表不存在时返回 null */
+  private async retrieve(question: string) {
+    const instruction =
+      'Given a question about employee leave policy, retrieve relevant policy clauses that answer the question';
+    const [questionVector] = await this.embed(`Instruct: ${instruction}\nQuery: ${question}`);
 
-    // 一次请求把问题和所有段落都向量化，返回顺序与入参一致
-    // 查询指令
-    const instruction = "Given a question about employee leave policy, retrieve relevant policy clauses that answer the question"
-    // 按模板拼接 userQuestion
-    const queryWithInstruction = `Instruct: ${instruction}\nQuery: ${question}`;
-    const [questionVector] = await this.embed(queryWithInstruction)
-    const table = await this.Lance_DB.openTable('test').catch(() => null)
-
-    if (!table) {
-      return { answer: '知识库还没建好，请先确认 data/rag.txt', sources: [] }
-    }
-
-    const topK = (await (table.search(questionVector) as any)
-      .distanceType('cosine')   // 关键：指定余弦距离
-      .limit(5)                 // 取最相似的 5 条
-      .toArray()) as { text: string; _distance: number }[]
-
-    // console.log('未过滤：',topK.map((i) => `${i.text}: ${i._distance}`))
-
-    const matches = topK.filter((item) => {
-      return item._distance <= threshold
-    })
+    this.tablePromise ??= this.Lance_DB.openTable('test').catch(() => null);
+    const table = await this.tablePromise;
+    if (!table) return null;
 
     // LanceDB 返回的是余弦距离（越小越相似），不是相似度
-    if (topK.length === 0 || matches?.length === 0) {
-      return { answer: '没有找到相关资料，暂时无法根据文档回答。', sources: [] };
+    const topK = (await (table.search(questionVector) as any)
+      .distanceType('cosine')
+      .limit(5)
+      .toArray()) as { text: string; _distance: number }[];
+
+    return topK.filter((item) => item._distance <= threshold).map((item) => item.text);
+  }
+
+  /** 边生成边把增量交给 onDelta，返回命中的参考资料 */
+  async askStream(question: string, onDelta: (text: string) => void) {
+    const sources = await this.retrieve(question);
+
+    if (!sources) {
+      onDelta('知识库还没建好，请先确认 data/rag.txt');
+      return { sources: [] as string[] };
     }
-    const topK_text = matches.map(item => item.text)
-    // console.log(matches.map((i) => `${i.text}: ${i._distance}`))
-    const response = await this.llmBreaker.run(() =>
+    if (sources.length === 0) {
+      onDelta('没有找到相关资料，暂时无法根据文档回答。');
+      return { sources: [] as string[] };
+    }
+
+    const stream = await this.llmBreaker.run(() =>
       this.LLM_Client.chat.completions.create({
-          model: 'deepseek-flash',
-          messages: [
-            {
-              role: 'system',
-              content: '请根据参考资料回答；资料不足时说明无法确定。',
-            },
-            {
-              role: 'user',
-              content: `参考资料：\n${topK_text.join('\n\n')}\n\n问题：${question}`,
-            },
-          ],
-          temperature: 0,
-          // stream: true,
-          reasoning_effort: "none",
-        }),
+        model: 'deepseek-flash',
+        messages: [
+          { role: 'system', content: '请根据参考资料回答；资料不足时说明无法确定。' },
+          {
+            role: 'user',
+            content: `参考资料：\n${sources.join('\n\n')}\n\n问题：${question}`,
+          },
+        ],
+        temperature: 0,
+        stream: true,
+        reasoning_effort: 'none',
+      }),
     );
 
-        return {
-          answer: response.choices[0]?.message.content ?? '模型没有返回内容。',
-          sources: topK_text,
-        };
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content;
+      if (text) onDelta(text);
+    }
+
+    return { sources };
   }
 
   async embed(q: string | string[]) {
@@ -255,6 +257,7 @@ export class LlmService {
 
     // 每次启动整表重建，维度跟着真实向量走，不会残留旧的占位 schema
     await this.Lance_DB.createTable(name, rows, { mode: 'overwrite' })
+    this.tablePromise = undefined // 换表了，缓存必须失效
   }
 
   private async getTable() {
