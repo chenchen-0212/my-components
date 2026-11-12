@@ -8,7 +8,7 @@ import {
 } from './Interceptor'
 
 const baseUrl = import.meta.env.VITE_BASE_URL
-const DEFAULT_TIMEOUT = 3000
+const DEFAULT_TIMEOUT = 10000
 
 async function request<T = unknown>(url: string, option: RequestOptions = {}, isStream: boolean = false):Promise<T> {
   // 提取配置项

@@ -9,5 +9,10 @@ export default {
   // rag测试接口
   rag_send_msg(data:any) {
     return http.post('/llm/rag',data)
-  }
+  },
+
+  // 重建向量索引
+  resetIndex() {
+    return http.get('/llm/build-index')
+  },
 }

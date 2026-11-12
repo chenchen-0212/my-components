@@ -6,6 +6,7 @@
       <!-- <ElButton v-loading="loading"   @click="chatMextMsg">发送</ElButton> -->
       <ElButton v-loading="loading"   @click="sendMsg">发送</ElButton>
     <pre class="msg_pennel">{{ pre }}</pre>
+    <ElButton v-loading="resetLoading"   @click="resetIndex">重建向量索引</ElButton>
   </div>
 </template>
 
@@ -28,8 +29,20 @@ const msg = ref('')
 const pre = ref('')
 let es: EventSource | null = null
 const loading = ref<boolean>(false)
+const resetLoading = ref<boolean>(false)
 
-const history:any[] = []
+const history: any[] = []
+
+const resetIndex = async () => {
+  try {
+    resetLoading.value = true
+    await llmApi.resetIndex()
+  } catch (e) {
+
+  } finally {
+    resetLoading.value = false
+  }
+}
 
 // 单条信息
 const sendMsg = async () => {

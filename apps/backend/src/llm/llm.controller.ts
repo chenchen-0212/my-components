@@ -133,10 +133,10 @@ export class LlmController {
    return await this.llmService.ask(body?.msg)
   }
 
-  @Get('lance-test')
-  testLanceDb() {
-    // return this.llmService.testLanceDb();
-    return '测试 lance'
+  @Get('build-index')
+  async testLanceDb() {
+    await this.llmService.buildIndex();
+    return true
   }
 
 }
