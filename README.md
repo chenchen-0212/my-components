@@ -1,6 +1,6 @@
 # MC UI
 
-基于 **Vue 3 + Vite** 的个人组件库，pnpm monorepo + Turborepo 管理，以 **Element Plus** 作为基础组件依赖，配套一个自带布局与 i18n 的文档站。
+基于 **Vue 3 + Vite** 的个人组件库，pnpm monorepo + Turborepo 管理，以 **Element Plus** 作为基础组件依赖，配套文档站和一个 **NestJS + BullMQ** 的后端服务。
 
 > 开发中 · 组件目前仅包含 Button
 
@@ -18,11 +18,18 @@ my-components/
 │   └── shared/                @mc-ui/shared      常量与类型（直接导出 .ts 源码）
 ├── apps/
 │   ├── playground/            @mc-ui/playground  本地调试页（最小 Vue 应用）
-│   └── docs/                  @mc-ui/docs        文档站
-│       ├── src/pages/         页面（文件路由，pages/xxx.vue → /xxx）
-│       ├── src/route/         路由实例
-│       ├── src/locales/       i18n 词条（zh-CN / en-US）
-│       └── src/App.vue        固定顶栏 + el-menu 侧栏 + RouterView
+│   ├── docs/                  @mc-ui/docs        文档站
+│   │   ├── src/pages/         页面（文件路由，pages/xxx.vue → /xxx）
+│   │   ├── src/route/         路由实例
+│   │   ├── src/locales/       i18n 词条（zh-CN / en-US）
+│   │   └── src/App.vue        固定顶栏 + el-menu 侧栏 + RouterView
+│   └── backend/               @mc-ui/backend     NestJS 服务（队列 + LLM 流式接口）
+│       ├── src/main.ts        入口（加载 .env，监听 PORT，默认 3000）
+│       ├── src/app.module.ts  根模块
+│       ├── src/queue/         队列模块 / 消费者 / 示例接口
+│       ├── src/llm/           DeepSeek 流式对话（SSE）+ RAG 检索
+│       ├── data/rag.txt       RAG 知识库（按空行分段）
+│       └── .env               本地环境变量（已 gitignore）
 ├── pnpm-workspace.yaml        声明 packages/* 与 apps/* 为工作区成员
 ├── turbo.json                 任务调度（build / dev）
 └── package.json
@@ -30,8 +37,9 @@ my-components/
 
 ## 环境要求
 
-- Node.js ≥ 18（推荐 20 / 22）
+- Node.js ≥ 20（开发机实测 22）
 - pnpm ≥ 11（`corepack enable` 或 `npm i -g pnpm`）
+- Redis ≥ 6.2（仅后端需要；BullMQ 启动时会检查版本，低于 5.0 直接报错）
 
 本仓库使用 `workspace:*` 协议，**必须用 pnpm**，npm / yarn 安装会直接失败。
 
@@ -41,15 +49,25 @@ my-components/
 # 1. 安装依赖（必须在仓库根目录执行）
 pnpm install
 
-# 2. 构建组件库（两个应用都依赖 dist，首次必须先构建）
+# 2. 构建组件库（两个前端应用都依赖 dist，首次必须先构建）
 pnpm -F @mc-ui/core build
 
 # 3. 任选其一启动
-pnpm -F @mc-ui/playground dev    # 本地调试页
-pnpm -F @mc-ui/docs dev          # 文档站
+pnpm -F @mc-ui/playground dev    # 本地调试页  http://localhost:5173
+pnpm -F @mc-ui/docs dev          # 文档站      http://localhost:5173
+pnpm -F @mc-ui/backend dev       # 后端服务    http://localhost:3000（需先启动 Redis）
 ```
 
-默认地址 http://localhost:5173 。
+两个前端应用的默认端口都是 5173，同时启动时后者会自动顺延到 5174。
+
+后端首次启动前，在 `apps/backend/.env` 里填好两个 key（该文件已在 `.gitignore` 中）：
+
+```bash
+DEEPSEEK_API_KEY=sk-xxxxxxxx   # 对话（DeepSeek）
+EMB_API_KEY=sk-xxxxxxxx        # 向量化（硅基流动）
+```
+
+缺少 `DEEPSEEK_API_KEY` 时 `/llm` 系列接口报鉴权错误；缺少 `EMB_API_KEY` 时 `/llm/rag` 在向量化阶段失败。
 
 ## 常用命令
 
@@ -57,12 +75,14 @@ pnpm -F @mc-ui/docs dev          # 文档站
 | --- | --- |
 | `pnpm install` | 安装全部子项目依赖 |
 | `pnpm build` | 按依赖顺序构建所有包（turbo 负责排序） |
-| `pnpm dev` | 并行启动所有 dev 任务 |
+| `pnpm dev` | 并行启动文档站 + 后端（不含 playground，需 Redis 就绪） |
 | `pnpm -F @mc-ui/core build` | 只构建组件库 |
 | `pnpm -F @mc-ui/core dev` | 组件库监听模式（改源码自动重建 dist） |
 | `pnpm -F @mc-ui/playground dev` | 只启动调试页 |
 | `pnpm -F @mc-ui/docs dev` | 只启动文档站 |
 | `pnpm -F @mc-ui/docs build` | 构建文档站静态产物 |
+| `pnpm -F @mc-ui/backend dev` | 后端 watch 模式 |
+| `pnpm -F @mc-ui/backend build` | 后端编译到 `dist/` |
 
 `-F` 是 `--filter` 的简写，按包名筛选；也可以写路径：`pnpm --filter ./packages/ui build`。
 
@@ -107,15 +127,19 @@ definePage({
 - `meta.title`：菜单文案兜底值
 - `meta.order`：菜单排序，越小越靠前（未设置为 999）
 
-### Element Plus 按需注册
+### Element Plus 按需引入
 
-为避免把整个 Element Plus 打进产物，`src/main.ts` 里**逐个注册**组件：
+`vite.config.ts` 里用 `unplugin-vue-components` + `ElementPlusResolver` 在编译期扫描模板：模板里写 `<el-input>` 就会自动 import 并注册，**不用再回 `main.ts` 手动 `app.component(...)`**。
+
+样式方面 `main.ts` 全量引入了 `element-plus/dist/index.css`（gzip 后约 48KB），所以新增组件不需要补样式 import。
+
+需要手动调用的 API（`ElMessage`、`ElMessageBox` 等）仍需显式 import：
 
 ```ts
-app.component('ElMenu', ElMenu)
+import { ElMessage } from 'element-plus'
 ```
 
-新页面用到新的 EP 组件时，**必须回 `main.ts` 补一行注册**，否则模板不渲染，控制台只有一条 `Failed to resolve component` 警告。
+`components.d.ts`、`typed-router.d.ts` 是插件生成的类型文件，写页面时自动更新，建议一并提交。
 
 ### 国际化
 
@@ -125,6 +149,90 @@ app.component('ElMenu', ElMenu)
 - Element Plus 内置文案由 `<el-config-provider :locale>` 跟随站点语言
 
 新增文案时在两个语言文件里补同名 key；缺 key 会回退到 `fallbackLocale`（中文），**不会报错**，所以改完记得切语言看一眼。
+
+### 本地代理
+
+文档站 dev server 把 `/api` 前缀转发给后端（见 `vite.config.ts`）：请求 `/api/jobs` 去掉前缀后打到 `http://<target>/jobs`。
+
+`target` 必须与后端 `PORT` 保持一致（默认 3000）。如果后端以后加了 `setGlobalPrefix('api')`，把 `rewrite` 整行删掉，让 `/api` 原样转发。
+
+## 后端服务（apps/backend）
+
+NestJS 12（ESM）+ BullMQ 6，无鉴权，定位是给前端提供接口、异步任务、LLM 流式对话和 RAG 检索。
+
+### 启动
+
+```bash
+# Redis 需先跑起来（Windows 上已注册为服务）
+net start Redis
+
+pnpm -F @mc-ui/backend dev     # watch 模式
+pnpm -F @mc-ui/backend build   # 编译
+node dist/main.js              # 跑编译产物
+```
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `PORT` | `3000` | 服务端口 |
+| `REDIS_HOST` | `127.0.0.1` | |
+| `REDIS_PORT` | `6379` | |
+| `REDIS_PASSWORD` | 空 | |
+| `REDIS_DB` | `0` | |
+| `DEEPSEEK_API_KEY` | 无 | 对话模型（DeepSeek），缺失时报鉴权错误 |
+| `EMB_API_KEY` | 无 | 向量模型（硅基流动 SiliconFlow），`/llm/rag` 用 |
+
+用 `dotenv` 从 `apps/backend/.env` 读取（`main.ts` 第一行 `import 'dotenv/config'`）。注意这行**必须放在所有 import 之前**：`llm.controller.ts` 在模块顶层就 `new OpenAI(...)` 了，晚于它加载会拿到 undefined 的 key。
+
+### 接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/jobs` | body `{ "message": "..." }`，返回 `{ "id": "1" }` |
+| `GET` | `/jobs/:id` | 返回 `{ state, result, failedReason }`，`state` 为 `waiting` / `active` / `completed` / `failed` |
+| `GET` | `/llm?msg=...` | SSE 流式对话，逐段推 `data: <文本>`，结尾推 `data: [DONE]` |
+| `POST` | `/llm` | SSE 流式对话（原生 `res.write`），body `{ message, history }`，先检索内置知识库；事件为 `data: {"c":"..."}`，结束推 `data: {"done":true,"fullMsg":"..."}` |
+| `POST` | `/llm/rag` | 普通 JSON，body `{ msg }`，返回 `{ answer, sources }`；走 `data/rag.txt` + 真实向量检索 |
+
+### LLM 流式接口（SSE）
+
+`@Sse()` 返回 `Observable<{ data: string }>`，`next` 一次就往响应里写一段 `data: xxx\n\n`：
+
+- **只认 `data` 字段**：Nest 的 `SseStream` 只序列化 `data`（以及 `type` / `id` / `retry` / `comment`），写 `{ msg }` 会被直接丢掉，浏览器端 `onmessage` 不会触发。
+- 模型返回的是增量 `delta.content`，用 `for await` 逐块取，一块一个 `next`，这就是逐字输出的来源。
+- 正常结束先推 `data: [DONE]` 再 `complete()`。前端收到 `[DONE]` 要主动 `close()`，因为 `EventSource` 在服务端断开后会**自动重连**，不关会无限循环调用模型。
+- 前端侧：`new EventSource('/api/llm?msg=' + encodeURIComponent(text))`，收到的 `e.data` 是字符串，直接拼接即可。
+
+对应的示例页面是文档站的 `src/pages/llm.vue`。
+
+### RAG 检索（`POST /llm/rag`）
+
+`llmService.ask(question)` 的流程：
+
+1. 读 `apps/backend/data/rag.txt`，按**空行**切段（`split(/\r?\n\s*\r?\n/)`）——换知识库只改这个文件，不动代码；
+2. 把问题和所有段落放进**一次** `embeddings.create` 批量向量化（`Qwen/Qwen3-Embedding-4B`，2560 维，返回顺序与入参一致）；
+3. 用完整向量算余弦相似度，排序取 Top-2；
+4. Top-2 拼进 prompt 交给 DeepSeek，返回值里 `sources` 是命中的段落。
+
+注意几点：
+
+- **必须用完整向量**。`vector.slice(0, 5)` 这种截断再算余弦是没有意义的：5 维上的夹角估计噪声约 ±0.45，语义差异（通常 0.1~0.2）会被完全淹没，排序等于随机。调试想打印前几个数可以，别拿它参与计算。
+- 批量向量化单次条数有上限（约 32 条），段落多了要自己切片分批。
+- 现在没有相似度阈值，不管相不相关都会塞 Top-2 给模型；需要"答不上来"时用 `score` 卡一个下限。
+- `src/llm/RAG.test.ts` 里的 `fakeEmbedding` 是**字符取模的假向量**（100 维、不调外部接口），只服务于 `POST /llm` 那条演示链路；`POST /llm/rag` 用的是真实向量。两条接口的检索质量差异就来自这里。
+
+### 加一个队列
+
+1. `queue.module.ts` 里 `BullModule.registerQueue({ name: 'xxx' })`；
+2. 新建 `@Processor('xxx')` 类继承 `WorkerHost`，实现 `process(job)`；
+3. 把 processor 加进 `providers`，用 `@InjectQueue('xxx')` 往队列投任务。
+
+### 几个容易踩的点
+
+- 后端是 **ESM**（Nest 12 只发 ESM），相对导入必须带 `.js` 后缀：`import { AppModule } from './app.module.js'`。
+- `typescript` 锁在 `^6`：Nest CLI 用不了 TS 7（没有暴露 compiler API）。
+- `ioredis` 是 bullmq 6 的**可选 peer**，且在 ESM 下它自己 `require` 不到，所以代码里是自建 `Redis` 实例传进 `BullModule.forRoot({ connection })`，而不是传连接参数对象。
 
 ## 技术栈
 
@@ -137,14 +245,15 @@ app.component('ElMenu', ElMenu)
 | 文档站 i18n | vue-i18n 11（Composition API 模式） |
 | 类型声明 | vite-plugin-dts |
 | 任务调度 | Turborepo |
+| 后端 | NestJS 12（ESM）+ Express |
+| 队列 | BullMQ 6 + ioredis |
+| 大模型 | openai SDK（指向 DeepSeek，`deepseek-flash`）+ SSE 流式输出 |
+| 向量检索 | openai SDK 指向硅基流动，`Qwen/Qwen3-Embedding-4B` + 余弦相似度 |
 
 ## 组件使用
 
 ```ts
 import { McButton } from '@mc-ui/core'
-definePage({
-  meta: { title: '复制按钮', order: 2 }, // 定制菜单标题
-})
 ```
 
 ```vue

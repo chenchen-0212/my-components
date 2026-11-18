@@ -1,9 +1,11 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+
+# bullmq 依赖 msgpackr 的原生加速器，不编译也能用（自动回退 JS 实现）
 allowBuilds:
   esbuild: set this to true or false
-
-# 需要时才加：
-# onlyBuiltDependencies:
-#   - esbuild
+  msgpackr-extract: false
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true

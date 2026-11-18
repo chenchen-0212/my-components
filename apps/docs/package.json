@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@mc-ui/core": "workspace:*",
+    "@mc-ui/utils": "workspace:*",
     "element-plus": "^2.14.7",
     "vue": "^3.5.43",
     "vue-i18n": "^11.4.16",
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
+    "unplugin-vue-components": "^32.1.0",
     "vite": "^5.0.0"
   }
 }
